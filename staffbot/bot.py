@@ -1,22 +1,40 @@
 import os
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv
 
-TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
+load_dotenv()
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = os.getenv("GUILD_ID")  # optional
 
 intents = discord.Intents.default()
+intents.members = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"✅ {bot.user} ist online")
+    try:
+        if GUILD_ID:
+            guild = discord.Object(id=int(GUILD_ID))
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
+        else:
+            await bot.tree.sync()
+    except Exception as e:
+        print(f"[ERROR] sync failed: {e}")
 
-@bot.tree.command(name="ping", description="Testet ob der Bot läuft")
+    print(f"[ONLINE] {bot.user} (ID: {bot.user.id})")
+
+@bot.tree.command(name="ping", description="Check if the bot is alive.")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("🏓 Pong! SystemBot läuft.", ephemeral=True)
+    await interaction.response.send_message("pong ?", ephemeral=True)
 
-if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN fehlt!")
+def main():
+    if not TOKEN:
+        raise RuntimeError("DISCORD_TOKEN missing")
+    bot.run(TOKEN)
 
-bot.run(TOKEN)
+if __name__ == "__main__":
+    main()
