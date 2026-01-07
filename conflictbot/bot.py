@@ -8,8 +8,9 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")  # optional
 
-intents = discord.Intents.default()
-intents.members = True
+# KEINE privileged intents (damit Railway + Discord Portal sofort klappt)
+intents = discord.Intents.none()
+intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -20,12 +21,14 @@ async def on_ready():
             guild = discord.Object(id=int(GUILD_ID))
             bot.tree.copy_global_to(guild=guild)
             await bot.tree.sync(guild=guild)
+            print(f"[READY] Slash-Commands synced to Guild: {GUILD_ID}")
         else:
             await bot.tree.sync()
+            print("[READY] Global Slash-Commands synced")
     except Exception as e:
-        print(f"[ERROR] sync failed: {e}")
+        print(f"[ERROR] Command sync failed: {e}")
 
-    print(f"[ONLINE] {bot.user} (ID: {bot.user.id})")
+    print(f"[ONLINE] Logged in as {bot.user} (ID: {bot.user.id})")
 
 @bot.tree.command(name="ping", description="Check if the bot is alive.")
 async def ping(interaction: discord.Interaction):
@@ -33,7 +36,7 @@ async def ping(interaction: discord.Interaction):
 
 def main():
     if not TOKEN:
-        raise RuntimeError("DISCORD_TOKEN missing")
+        raise RuntimeError("DISCORD_TOKEN is missing.")
     bot.run(TOKEN)
 
 if __name__ == "__main__":
