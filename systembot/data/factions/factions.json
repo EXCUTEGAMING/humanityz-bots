@@ -1,4 +1,4 @@
-{
+ï»¿{
   "LDF": {
     "name": "Livonian Defence Forces",
     "side": "state",
@@ -12,7 +12,7 @@
     "description": "Invasoren/Corporate. Expansion, Kontrolle, Ressourcen."
   },
   "IND": {
-    "name": "Unabhängige",
+    "name": "UnabhÃ¤ngige",
     "side": "independent",
     "playable": true,
     "description": "Weder Staat noch CMC. Eigene Agenda, flexibel."
@@ -21,6 +21,6 @@
     "name": "United Nations",
     "side": "neutral_team",
     "playable": false,
-    "description": "Team-Fraktion. Neutral, fördert Spawn & IC-Aktionen."
+    "description": "Team-Fraktion. Neutral, fÃ¶rdert Spawn & IC-Aktionen."
   }
 }
