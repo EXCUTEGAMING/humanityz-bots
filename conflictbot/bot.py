@@ -5,10 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = os.getenv("GUILD_ID")  # optional
+TOKEN = os.getenv("TOKEN") or os.getenv("DISCORD_TOKEN")
+GUILD_ID = os.getenv("GUILD_ID")  # optional, aber empfohlen
 
-# KEINE privileged intents (damit Railway + Discord Portal sofort klappt)
 intents = discord.Intents.none()
 intents.guilds = True
 
@@ -36,7 +35,7 @@ async def ping(interaction: discord.Interaction):
 
 def main():
     if not TOKEN:
-        raise RuntimeError("DISCORD_TOKEN is missing.")
+        raise RuntimeError("TOKEN/DISCORD_TOKEN is missing. Set Railway Variable TOKEN.")
     bot.run(TOKEN)
 
 if __name__ == "__main__":
