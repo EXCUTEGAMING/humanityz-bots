@@ -1,0 +1,26 @@
+{
+  "LDF": {
+    "name": "Livonian Defence Forces",
+    "side": "state",
+    "playable": true,
+    "description": "Staat/Verteidiger. Ordnung, Versorgung, Struktur."
+  },
+  "CMC": {
+    "name": "Chernarus Mining Corporation",
+    "side": "invader",
+    "playable": true,
+    "description": "Invasoren/Corporate. Expansion, Kontrolle, Ressourcen."
+  },
+  "IND": {
+    "name": "Unabhängige",
+    "side": "independent",
+    "playable": true,
+    "description": "Weder Staat noch CMC. Eigene Agenda, flexibel."
+  },
+  "UN": {
+    "name": "United Nations",
+    "side": "neutral_team",
+    "playable": false,
+    "description": "Team-Fraktion. Neutral, fördert Spawn & IC-Aktionen."
+  }
+}
