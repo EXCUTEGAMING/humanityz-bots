@@ -63,11 +63,11 @@ def load_json(path: Path, default):
 
     raw = path.read_bytes()
 
-    # robust decode (fixes Windows ANSI files)
-    for enc in ("utf-8", "cp1252", "latin-1"):
+    # robust decode + parse (handles UTF-8 BOM + Windows ANSI)
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
         try:
             return json.loads(raw.decode(enc))
-        except UnicodeDecodeError:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             continue
 
     # never crash
