@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8 -*-
 import os
 import json
 from pathlib import Path
@@ -47,18 +48,18 @@ async def on_ready():
 
 @bot.tree.command(name="ping", description="Check if the bot is alive.")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("pong ?", ephemeral=True)
+    await interaction.response.send_message("pong ✅", ephemeral=True)
 
 @bot.tree.command(name="factions", description="List all available factions.")
 async def factions(interaction: discord.Interaction):
     factions_path = DATA_PATH / "factions" / "factions.json"
     factions_data = load_json(factions_path, {})
 
-    msg = "**Verf�gbare Fraktionen:**\n"
+    msg = "**Verfügbare Fraktionen:**\n"
     for key, f in factions_data.items():
         status = "spielbar" if f.get("playable") else "nicht spielbar"
         desc = f.get("description", "")
-        msg += f"- **{key}** � {f.get('name','?')} ({status})\n"
+        msg += f"- **{key}** – {f.get('name','?')} ({status})\n"
         if desc:
             msg += f"  _{desc}_\n"
 
