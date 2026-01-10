@@ -155,4 +155,22 @@ async def join_faction(interaction: discord.Interaction, faction: str):
 
     await interaction.response.send_message(f"✅ Du bist jetzt Teil der Fraktion **{faction}**.", ephemeral=True)
 
+@bot.tree.command(name="whoami", description="Show your faction (and later rank).")
+async def whoami(interaction: discord.Interaction):
+    players = load_json(PLAYERS_PATH, {})
+    user_id = str(interaction.user.id)
+
+    if user_id not in players:
+        await interaction.response.send_message(
+            "Du bist noch keiner Fraktion zugewiesen. Nutze `/join_faction` oder frag die Fraktionsführung/Staff.",
+            ephemeral=True
+        )
+        return
+
+    faction = players[user_id].get("faction", "UNBEKANNT")
+    await interaction.response.send_message(
+        f"✅ Du bist in der Fraktion: **{faction}**",
+        ephemeral=True
+    )
+
 bot.run(TOKEN)
