@@ -26,6 +26,16 @@ BASE_PATH = Path(__file__).parent
 DATA_PATH = BASE_PATH / "data"
 FACTIONS_PATH = DATA_PATH / "factions" / "factions.json"
 PLAYERS_PATH = DATA_PATH / "players" / "players.json"
+STATIONS_PATH = DATA_PATH / "stations" / "stations.json"
+
+STATION_TYPES = {
+    "CAMP": {"min_players": 1, "notes": "Camp (mind. 1 Spieler)"},
+    "DORF": {"min_players": 4, "notes": "Dorf (mind. 4 Spieler)"},
+    "SIEDLUNG": {"min_players": 10, "notes": "Siedlung (10 Spieler oder 8 Spieler-Fraktion)"},
+    "AUSSENPOSTEN": {"min_players": 5, "notes": "Außenposten (mind. 5 Spieler-Fraktion)"},
+    "STRATEGISCH": {"min_players": 5, "notes": "Strategischer Punkt (Capture + 48h Schutz)"},
+}
+
 
 DEFAULT_FACTIONS = {
   "LDF": {
@@ -76,6 +86,10 @@ def load_json(path: Path, default):
 def save_json(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+def is_staff(interaction: discord.Interaction) -> bool:
+    # MVP: Admin Permission reicht erstmal (du hast Bots ohnehin Admin gegeben)
+    return interaction.user.guild_permissions.administrator
+
 
 def bootstrap_files():
     # factions
@@ -172,5 +186,142 @@ async def whoami(interaction: discord.Interaction):
         f"✅ Du bist in der Fraktion: **{faction}**",
         ephemeral=True
     )
+@bot.tree.command(name="create_station", description="(Staff) Create a station for a faction.")
+@app_commands.describe(
+    station_id="Unique ID (e.g. nadbor_camp_01)",
+    name="Display name",
+    station_type="CAMP / DORF / SIEDLUNG / AUSSENPOSTEN / STRATEGISCH",
+    owner_faction="LDF / CMC / IND",
+    member_count="Current member count (for validation)"
+)
+async def create_station(
+    interaction: discord.Interaction,
+    station_id: str,
+    name: str,
+    station_type: str,
+    owner_faction: str,
+    member_count: int
+):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff darf Stationen erstellen.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    station_type = station_type.upper().strip()
+    owner_faction = owner_faction.upper().strip()
+
+    if station_type not in STATION_TYPES:
+        await interaction.response.send_message("❌ Ungültiger Stationstyp.", ephemeral=True)
+        return
+
+    # Basic rule check (MVP)
+    min_p = STATION_TYPES[station_type]["min_players"]
+    if member_count < min_p:
+        await interaction.response.send_message(
+            f"❌ Mindestspieler nicht erreicht: {station_type} braucht mind. {min_p}.",
+            ephemeral=True
+        )
+        return
+
+    stations = load_json(STATIONS_PATH, {})
+
+    if station_id in stations:
+        await interaction.response.send_message("❌ Station-ID existiert bereits.", ephemeral=True)
+        return
+
+    stations[station_id] = {
+        "name": name,
+        "type": station_type,
+        "owner_faction": owner_faction,
+        "member_count": member_count,
+        "state": {
+            "condition": 100,
+            "protection_hours": 0
+        }
+    }
+@bot.tree.command(name="create_station", description="(Staff) Create a station for a faction.")
+@app_commands.describe(
+    station_id="Unique ID (e.g. nadbor_camp_01)",
+    name="Display name",
+    station_type="CAMP / DORF / SIEDLUNG / AUSSENPOSTEN / STRATEGISCH",
+    owner_faction="LDF / CMC / IND",
+    member_count="Current member count (for validation)"
+)
+async def create_station(
+    interaction: discord.Interaction,
+    station_id: str,
+    name: str,
+    station_type: str,
+    owner_faction: str,
+    member_count: int
+):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff darf Stationen erstellen.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    station_type = station_type.upper().strip()
+    owner_faction = owner_faction.upper().strip()
+
+    if station_type not in STATION_TYPES:
+        await interaction.response.send_message("❌ Ungültiger Stationstyp.", ephemeral=True)
+        return
+
+    # Basic rule check (MVP)
+    min_p = STATION_TYPES[station_type]["min_players"]
+    if member_count < min_p:
+        await interaction.response.send_message(
+            f"❌ Mindestspieler nicht erreicht: {station_type} braucht mind. {min_p}.",
+            ephemeral=True
+        )
+        return
+
+    stations = load_json(STATIONS_PATH, {})
+
+    if station_id in stations:
+        await interaction.response.send_message("❌ Station-ID existiert bereits.", ephemeral=True)
+        return
+
+    stations[station_id] = {
+        "name": name,
+        "type": station_type,
+        "owner_faction": owner_faction,
+        "member_count": member_count,
+        "state": {
+            "condition": 100,
+            "protection_hours": 0
+        }
+    }
+
+    save_json(STATIONS_PATH, stations)
+    await interaction.response.send_message(
+        f"✅ Station erstellt: **{name}** ({station_type}) für **{owner_faction}**\nID: `{station_id}`",
+        ephemeral=True
+    )
+@bot.tree.command(name="station_info", description="Show station info by station_id.")
+@app_commands.describe(station_id="Station ID (e.g. nadbor_camp_01)")
+async def station_info(interaction: discord.Interaction, station_id: str):
+    station_id = station_id.lower().strip()
+    stations = load_json(STATIONS_PATH, {})
+
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    s = stations[station_id]
+    cond = s.get("state", {}).get("condition", 0)
+    prot = s.get("state", {}).get("protection_hours", 0)
+
+    msg = (
+        f"**Station:** {s.get('name','?')}\n"
+        f"**ID:** `{station_id}`\n"
+        f"**Typ:** {s.get('type','?')} ({STATION_TYPES.get(s.get('type',''),{}).get('notes','')})\n"
+        f"**Besitzer:** {s.get('owner_faction','?')}\n"
+        f"**Mitglieder (gemeldet):** {s.get('member_count','?')}\n"
+        f"**Zustand:** {cond}/100\n"
+        f"**Schutzzeit:** {prot}h\n"
+    )
+
+    await interaction.response.send_message(msg, ephemeral=True)
 
 bot.run(TOKEN)
