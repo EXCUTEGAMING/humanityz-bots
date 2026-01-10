@@ -72,13 +72,11 @@ def load_json(path: Path, default):
         return default
 
     raw = path.read_bytes()
-
     for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
         try:
             return json.loads(raw.decode(enc))
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
-
     return default
 
 def save_json(path: Path, data):
@@ -103,7 +101,6 @@ def bootstrap_files():
     save_json(STATIONS_PATH, stations)
 
 def ensure_station_resources(station: dict) -> dict:
-    """Ensure station has resources structure."""
     if "resources" not in station or not isinstance(station["resources"], dict):
         station["resources"] = {}
     for z in RESOURCE_ZONES:
@@ -198,8 +195,30 @@ async def whoami(interaction: discord.Interaction):
     await interaction.response.send_message(f"✅ Du bist in der Fraktion: **{faction}**", ephemeral=True)
 
 # --------------------
-# STATIONS (MVP + MEMBERS + TOOLS)
+# STATIONS
 # --------------------
+@bot.tree.command(name="stations", description="List all stations (ID, name, type, owner).")
+async def stations(interaction: discord.Interaction):
+    stations_data = load_json(STATIONS_PATH, {})
+
+    if not stations_data:
+        await interaction.response.send_message("ℹ️ Es gibt aktuell keine Stationen.", ephemeral=True)
+        return
+
+    lines = ["**Alle Stationen:**"]
+    for sid, s in sorted(stations_data.items()):
+        members_count = len(s.get("members", []))
+        lines.append(
+            f"- `{sid}` | **{s.get('name','?')}** | {s.get('type','?')} | {s.get('owner_faction','?')} | Mitglieder: {members_count}"
+        )
+
+    # Discord hat Message-Limits, daher notfalls kürzen
+    msg = "\n".join(lines)
+    if len(msg) > 1800:
+        msg = msg[:1800] + "\n…(gekürzt)"
+
+    await interaction.response.send_message(msg, ephemeral=True)
+
 @bot.tree.command(name="create_station", description="(Staff) Create a station for a faction.")
 @app_commands.describe(
     station_id="Unique ID (e.g. nadbor_camp_01)",
@@ -236,8 +255,8 @@ async def create_station(
         )
         return
 
-    stations = load_json(STATIONS_PATH, {})
-    if station_id in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id in stations_data:
         await interaction.response.send_message("❌ Station-ID existiert bereits.", ephemeral=True)
         return
 
@@ -253,8 +272,8 @@ async def create_station(
     }
     station = ensure_station_resources(station)
 
-    stations[station_id] = station
-    save_json(STATIONS_PATH, stations)
+    stations_data[station_id] = station
+    save_json(STATIONS_PATH, stations_data)
 
     await interaction.response.send_message(
         f"✅ Station erstellt: **{name}** ({station_type}) für **{owner_faction}**\nID: `{station_id}`\nSchutz: {protection}h",
@@ -265,13 +284,13 @@ async def create_station(
 @app_commands.describe(station_id="Station ID (e.g. nadbor_camp_01)")
 async def station_info(interaction: discord.Interaction, station_id: str):
     station_id = station_id.lower().strip()
-    stations = load_json(STATIONS_PATH, {})
+    stations_data = load_json(STATIONS_PATH, {})
 
-    if station_id not in stations:
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = ensure_station_resources(stations[station_id])
+    s = ensure_station_resources(stations_data[station_id])
     cond = s.get("state", {}).get("condition", 0)
     prot = s.get("state", {}).get("protection_hours", 0)
     members_count = len(s.get("members", []))
@@ -291,13 +310,13 @@ async def station_info(interaction: discord.Interaction, station_id: str):
 @app_commands.describe(station_id="Station ID (e.g. nadbor_camp_01)")
 async def station_members(interaction: discord.Interaction, station_id: str):
     station_id = station_id.lower().strip()
-    stations = load_json(STATIONS_PATH, {})
+    stations_data = load_json(STATIONS_PATH, {})
 
-    if station_id not in stations:
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = stations[station_id]
+    s = stations_data[station_id]
     members = s.get("members", [])
 
     if not members:
@@ -323,13 +342,13 @@ async def station_add_member(interaction: discord.Interaction, user: discord.Mem
         return
 
     station_id = station_id.lower().strip()
-    stations = load_json(STATIONS_PATH, {})
+    stations_data = load_json(STATIONS_PATH, {})
 
-    if station_id not in stations:
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = stations[station_id]
+    s = stations_data[station_id]
     members = s.get("members", [])
 
     uid = str(user.id)
@@ -341,8 +360,8 @@ async def station_add_member(interaction: discord.Interaction, user: discord.Mem
     s["members"] = members
     s["member_count"] = len(members)
 
-    stations[station_id] = ensure_station_resources(s)
-    save_json(STATIONS_PATH, stations)
+    stations_data[station_id] = ensure_station_resources(s)
+    save_json(STATIONS_PATH, stations_data)
 
     await interaction.response.send_message(
         f"✅ {user.mention} wurde zu **{s.get('name','?')}** hinzugefügt.\nMitglieder: {len(members)}",
@@ -357,13 +376,13 @@ async def station_remove_member(interaction: discord.Interaction, user: discord.
         return
 
     station_id = station_id.lower().strip()
-    stations = load_json(STATIONS_PATH, {})
+    stations_data = load_json(STATIONS_PATH, {})
 
-    if station_id not in stations:
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = stations[station_id]
+    s = stations_data[station_id]
     members = s.get("members", [])
 
     uid = str(user.id)
@@ -375,8 +394,8 @@ async def station_remove_member(interaction: discord.Interaction, user: discord.
     s["members"] = members
     s["member_count"] = len(members)
 
-    stations[station_id] = ensure_station_resources(s)
-    save_json(STATIONS_PATH, stations)
+    stations_data[station_id] = ensure_station_resources(s)
+    save_json(STATIONS_PATH, stations_data)
 
     await interaction.response.send_message(
         f"✅ {user.mention} wurde aus **{s.get('name','?')}** entfernt.\nMitglieder: {len(members)}",
@@ -397,20 +416,20 @@ async def station_set_type(interaction: discord.Interaction, station_id: str, st
         await interaction.response.send_message("❌ Ungültiger Stationstyp.", ephemeral=True)
         return
 
-    stations = load_json(STATIONS_PATH, {})
-    if station_id not in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    stations[station_id]["type"] = station_type
+    stations_data[station_id]["type"] = station_type
 
     if station_type == "STRATEGISCH":
-        st = stations[station_id].get("state", {})
+        st = stations_data[station_id].get("state", {})
         if st.get("protection_hours", 0) == 0:
             st["protection_hours"] = 48
-            stations[station_id]["state"] = st
+            stations_data[station_id]["state"] = st
 
-    save_json(STATIONS_PATH, stations)
+    save_json(STATIONS_PATH, stations_data)
     await interaction.response.send_message(f"✅ Typ gesetzt: `{station_id}` → **{station_type}**", ephemeral=True)
 
 @bot.tree.command(name="station_set_condition", description="(Staff) Set station condition (0-100).")
@@ -423,16 +442,16 @@ async def station_set_condition(interaction: discord.Interaction, station_id: st
     station_id = station_id.lower().strip()
     condition = max(0, min(100, int(condition)))
 
-    stations = load_json(STATIONS_PATH, {})
-    if station_id not in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    st = stations[station_id].get("state", {})
+    st = stations_data[station_id].get("state", {})
     st["condition"] = condition
-    stations[station_id]["state"] = st
+    stations_data[station_id]["state"] = st
 
-    save_json(STATIONS_PATH, stations)
+    save_json(STATIONS_PATH, stations_data)
     await interaction.response.send_message(f"✅ Zustand gesetzt: `{station_id}` → **{condition}/100**", ephemeral=True)
 
 @bot.tree.command(name="station_set_protection", description="(Staff) Set station protection hours.")
@@ -445,20 +464,20 @@ async def station_set_protection(interaction: discord.Interaction, station_id: s
     station_id = station_id.lower().strip()
     hours = max(0, int(hours))
 
-    stations = load_json(STATIONS_PATH, {})
-    if station_id not in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    st = stations[station_id].get("state", {})
+    st = stations_data[station_id].get("state", {})
     st["protection_hours"] = hours
-    stations[station_id]["state"] = st
+    stations_data[station_id]["state"] = st
 
-    save_json(STATIONS_PATH, stations)
+    save_json(STATIONS_PATH, stations_data)
     await interaction.response.send_message(f"✅ Schutzzeit gesetzt: `{station_id}` → **{hours}h**", ephemeral=True)
 
 # --------------------
-# RESOURCES (NEW)
+# RESOURCES (MVP)
 # --------------------
 @bot.tree.command(name="station_init_resources", description="(Staff) Initialize resources structure for a station.")
 @app_commands.describe(station_id="Station ID")
@@ -468,13 +487,13 @@ async def station_init_resources(interaction: discord.Interaction, station_id: s
         return
 
     station_id = station_id.lower().strip()
-    stations = load_json(STATIONS_PATH, {})
-    if station_id not in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    stations[station_id] = ensure_station_resources(stations[station_id])
-    save_json(STATIONS_PATH, stations)
+    stations_data[station_id] = ensure_station_resources(stations_data[station_id])
+    save_json(STATIONS_PATH, stations_data)
     await interaction.response.send_message("✅ Ressourcen-Struktur initialisiert.", ephemeral=True)
 
 @bot.tree.command(name="resource_add", description="(Staff) Add resources to a station zone.")
@@ -493,17 +512,17 @@ async def resource_add(interaction: discord.Interaction, station_id: str, zone: 
         await interaction.response.send_message("❌ Ungültige Zone. Nutze lager/verarbeitung/bauhaus/produktion.", ephemeral=True)
         return
 
-    stations = load_json(STATIONS_PATH, {})
-    if station_id not in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = ensure_station_resources(stations[station_id])
+    s = ensure_station_resources(stations_data[station_id])
     current = int(s["resources"][zone].get(item, 0))
     s["resources"][zone][item] = current + amount
 
-    stations[station_id] = s
-    save_json(STATIONS_PATH, stations)
+    stations_data[station_id] = s
+    save_json(STATIONS_PATH, stations_data)
 
     await interaction.response.send_message(f"✅ +{amount} **{item}** in **{zone}** (neu: {current + amount})", ephemeral=True)
 
@@ -523,18 +542,18 @@ async def resource_take(interaction: discord.Interaction, station_id: str, zone:
         await interaction.response.send_message("❌ Ungültige Zone. Nutze lager/verarbeitung/bauhaus/produktion.", ephemeral=True)
         return
 
-    stations = load_json(STATIONS_PATH, {})
-    if station_id not in stations:
+    stations_data = load_json(STATIONS_PATH, {})
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = ensure_station_resources(stations[station_id])
+    s = ensure_station_resources(stations_data[station_id])
     current = int(s["resources"][zone].get(item, 0))
     new_val = max(0, current - amount)
     s["resources"][zone][item] = new_val
 
-    stations[station_id] = s
-    save_json(STATIONS_PATH, stations)
+    stations_data[station_id] = s
+    save_json(STATIONS_PATH, stations_data)
 
     await interaction.response.send_message(f"✅ -{amount} **{item}** aus **{zone}** (neu: {new_val})", ephemeral=True)
 
@@ -542,13 +561,13 @@ async def resource_take(interaction: discord.Interaction, station_id: str, zone:
 @app_commands.describe(station_id="Station ID")
 async def resource_show(interaction: discord.Interaction, station_id: str):
     station_id = station_id.lower().strip()
-    stations = load_json(STATIONS_PATH, {})
+    stations_data = load_json(STATIONS_PATH, {})
 
-    if station_id not in stations:
+    if station_id not in stations_data:
         await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
         return
 
-    s = ensure_station_resources(stations[station_id])
+    s = ensure_station_resources(stations_data[station_id])
     res = s.get("resources", {})
 
     def fmt_zone(z: str) -> str:
