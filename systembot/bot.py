@@ -71,7 +71,6 @@ def load_json(path: Path, default):
 
     raw = path.read_bytes()
 
-    # robust decode + parse (handles UTF-8 BOM + Windows ANSI)
     for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
         try:
             return json.loads(raw.decode(enc))
@@ -85,7 +84,6 @@ def save_json(path: Path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 def is_staff(interaction: discord.Interaction) -> bool:
-    # MVP: Admin Permission reicht erstmal
     return interaction.user.guild_permissions.administrator
 
 def bootstrap_files():
@@ -228,7 +226,6 @@ async def create_station(
         return
 
     stations = load_json(STATIONS_PATH, {})
-
     if station_id in stations:
         await interaction.response.send_message("❌ Station-ID existiert bereits.", ephemeral=True)
         return
@@ -239,17 +236,9 @@ async def create_station(
         "name": name,
         "type": station_type,
         "owner_faction": owner_faction,
-
-        # Members = Discord User IDs (strings)
         "members": [],
-
-        # Will be overwritten automatically once members are managed
         "member_count": member_count,
-
-        "state": {
-            "condition": 100,
-            "protection_hours": protection
-        }
+        "state": {"condition": 100, "protection_hours": protection},
     }
 
     save_json(STATIONS_PATH, stations)
@@ -282,7 +271,6 @@ async def station_info(interaction: discord.Interaction, station_id: str):
         f"**Zustand:** {cond}/100\n"
         f"**Schutzzeit:** {prot}h\n"
     )
-
     await interaction.response.send_message(msg, ephemeral=True)
 
 @bot.tree.command(name="station_members", description="List members of a station.")
@@ -380,5 +368,83 @@ async def station_remove_member(interaction: discord.Interaction, user: discord.
         f"✅ {user.mention} wurde aus **{s.get('name','?')}** entfernt.\nMitglieder: {len(members)}",
         ephemeral=True
     )
+
+# --------------------
+# STATION ADMIN TOOLS (NEW)
+# --------------------
+@bot.tree.command(name="station_set_type", description="(Staff) Change station type.")
+@app_commands.describe(station_id="Station ID", station_type="CAMP/DORF/SIEDLUNG/AUSSENPOSTEN/STRATEGISCH")
+async def station_set_type(interaction: discord.Interaction, station_id: str, station_type: str):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    station_type = station_type.upper().strip()
+
+    if station_type not in STATION_TYPES:
+        await interaction.response.send_message("❌ Ungültiger Stationstyp.", ephemeral=True)
+        return
+
+    stations = load_json(STATIONS_PATH, {})
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    stations[station_id]["type"] = station_type
+
+    # auto protection rule: strategisch => 48h (nur setzen wenn vorher 0, damit Staff überschreiben kann)
+    if station_type == "STRATEGISCH":
+        st = stations[station_id].get("state", {})
+        if st.get("protection_hours", 0) == 0:
+            st["protection_hours"] = 48
+            stations[station_id]["state"] = st
+
+    save_json(STATIONS_PATH, stations)
+    await interaction.response.send_message(f"✅ Typ gesetzt: `{station_id}` → **{station_type}**", ephemeral=True)
+
+@bot.tree.command(name="station_set_condition", description="(Staff) Set station condition (0-100).")
+@app_commands.describe(station_id="Station ID", condition="0-100")
+async def station_set_condition(interaction: discord.Interaction, station_id: str, condition: int):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    condition = max(0, min(100, int(condition)))
+
+    stations = load_json(STATIONS_PATH, {})
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    st = stations[station_id].get("state", {})
+    st["condition"] = condition
+    stations[station_id]["state"] = st
+
+    save_json(STATIONS_PATH, stations)
+    await interaction.response.send_message(f"✅ Zustand gesetzt: `{station_id}` → **{condition}/100**", ephemeral=True)
+
+@bot.tree.command(name="station_set_protection", description="(Staff) Set station protection hours.")
+@app_commands.describe(station_id="Station ID", hours="Protection hours (e.g. 48)")
+async def station_set_protection(interaction: discord.Interaction, station_id: str, hours: int):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    hours = max(0, int(hours))
+
+    stations = load_json(STATIONS_PATH, {})
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    st = stations[station_id].get("state", {})
+    st["protection_hours"] = hours
+    stations[station_id]["state"] = st
+
+    save_json(STATIONS_PATH, stations)
+    await interaction.response.send_message(f"✅ Schutzzeit gesetzt: `{station_id}` → **{hours}h**", ephemeral=True)
 
 bot.run(TOKEN)
