@@ -37,30 +37,30 @@ STATION_TYPES = {
 }
 
 DEFAULT_FACTIONS = {
-  "LDF": {
-    "name": "Livonian Defence Forces",
-    "side": "state",
-    "playable": True,
-    "description": "Staat/Verteidiger. Ordnung, Versorgung, Struktur."
-  },
-  "CMC": {
-    "name": "Chernarus Mining Corporation",
-    "side": "invader",
-    "playable": True,
-    "description": "Invasoren/Corporate. Expansion, Kontrolle, Ressourcen."
-  },
-  "IND": {
-    "name": "Unabhängige",
-    "side": "independent",
-    "playable": True,
-    "description": "Weder Staat noch CMC. Eigene Agenda, flexibel."
-  },
-  "UN": {
-    "name": "United Nations",
-    "side": "neutral_team",
-    "playable": False,
-    "description": "Team-Fraktion. Neutral, fördert Spawn & IC-Aktionen."
-  }
+    "LDF": {
+        "name": "Livonian Defence Forces",
+        "side": "state",
+        "playable": True,
+        "description": "Staat/Verteidiger. Ordnung, Versorgung, Struktur."
+    },
+    "CMC": {
+        "name": "Chernarus Mining Corporation",
+        "side": "invader",
+        "playable": True,
+        "description": "Invasoren/Corporate. Expansion, Kontrolle, Ressourcen."
+    },
+    "IND": {
+        "name": "Unabhängige",
+        "side": "independent",
+        "playable": True,
+        "description": "Weder Staat noch CMC. Eigene Agenda, flexibel."
+    },
+    "UN": {
+        "name": "United Nations",
+        "side": "neutral_team",
+        "playable": False,
+        "description": "Team-Fraktion. Neutral, fördert Spawn & IC-Aktionen."
+    }
 }
 
 def load_json(path: Path, default):
@@ -89,19 +89,14 @@ def is_staff(interaction: discord.Interaction) -> bool:
     return interaction.user.guild_permissions.administrator
 
 def bootstrap_files():
-    # factions
-    factions = load_json(FACTIONS_PATH, DEFAULT_FACTIONS)
-    if not factions:
-        factions = DEFAULT_FACTIONS
+    factions = load_json(FACTIONS_PATH, DEFAULT_FACTIONS) or DEFAULT_FACTIONS
     save_json(FACTIONS_PATH, factions)
 
-    # players
     players = load_json(PLAYERS_PATH, {})
     if players is None:
         players = {}
     save_json(PLAYERS_PATH, players)
 
-    # stations
     stations = load_json(STATIONS_PATH, {})
     if stations is None:
         stations = {}
@@ -135,10 +130,16 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     except Exception:
         pass
 
+# --------------------
+# BASIC
+# --------------------
 @bot.tree.command(name="ping", description="Check if the bot is alive.")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("pong ✅ (SYSTEMBOT)", ephemeral=True)
 
+# --------------------
+# FACTIONS / PLAYERS
+# --------------------
 @bot.tree.command(name="factions", description="List all available factions.")
 async def factions(interaction: discord.Interaction):
     factions_data = load_json(FACTIONS_PATH, DEFAULT_FACTIONS)
@@ -185,11 +186,11 @@ async def whoami(interaction: discord.Interaction):
         return
 
     faction = players[user_id].get("faction", "UNBEKANNT")
-    await interaction.response.send_message(
-        f"✅ Du bist in der Fraktion: **{faction}**",
-        ephemeral=True
-    )
+    await interaction.response.send_message(f"✅ Du bist in der Fraktion: **{faction}**", ephemeral=True)
 
+# --------------------
+# STATIONS (MVP + MEMBERS)
+# --------------------
 @bot.tree.command(name="create_station", description="(Staff) Create a station for a faction.")
 @app_commands.describe(
     station_id="Unique ID (e.g. nadbor_camp_01)",
@@ -232,14 +233,19 @@ async def create_station(
         await interaction.response.send_message("❌ Station-ID existiert bereits.", ephemeral=True)
         return
 
-    # Schutzzeit: Strategisch bekommt direkt 48h Schutz (nach euren Regeln)
     protection = 48 if station_type == "STRATEGISCH" else 0
 
     stations[station_id] = {
         "name": name,
         "type": station_type,
         "owner_faction": owner_faction,
+
+        # Members = Discord User IDs (strings)
+        "members": [],
+
+        # Will be overwritten automatically once members are managed
         "member_count": member_count,
+
         "state": {
             "condition": 100,
             "protection_hours": protection
@@ -265,17 +271,114 @@ async def station_info(interaction: discord.Interaction, station_id: str):
     s = stations[station_id]
     cond = s.get("state", {}).get("condition", 0)
     prot = s.get("state", {}).get("protection_hours", 0)
+    members_count = len(s.get("members", []))
 
     msg = (
         f"**Station:** {s.get('name','?')}\n"
         f"**ID:** `{station_id}`\n"
         f"**Typ:** {s.get('type','?')} ({STATION_TYPES.get(s.get('type',''),{}).get('notes','')})\n"
         f"**Besitzer:** {s.get('owner_faction','?')}\n"
-        f"**Mitglieder (gemeldet):** {s.get('member_count','?')}\n"
+        f"**Mitglieder:** {members_count}\n"
         f"**Zustand:** {cond}/100\n"
         f"**Schutzzeit:** {prot}h\n"
     )
 
     await interaction.response.send_message(msg, ephemeral=True)
+
+@bot.tree.command(name="station_members", description="List members of a station.")
+@app_commands.describe(station_id="Station ID (e.g. nadbor_camp_01)")
+async def station_members(interaction: discord.Interaction, station_id: str):
+    station_id = station_id.lower().strip()
+    stations = load_json(STATIONS_PATH, {})
+
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    s = stations[station_id]
+    members = s.get("members", [])
+
+    if not members:
+        await interaction.response.send_message("ℹ️ Station hat noch keine Mitglieder.", ephemeral=True)
+        return
+
+    lines = []
+    for uid in members:
+        member = interaction.guild.get_member(int(uid)) if interaction.guild else None
+        if member:
+            lines.append(f"- {member.mention} ({member.name})")
+        else:
+            lines.append(f"- <@{uid}>")
+
+    msg = f"**Mitglieder von {s.get('name','?')}** (`{station_id}`)\n" + "\n".join(lines)
+    await interaction.response.send_message(msg, ephemeral=True)
+
+@bot.tree.command(name="station_add_member", description="(Staff) Add a member to a station.")
+@app_commands.describe(user="User to add", station_id="Station ID")
+async def station_add_member(interaction: discord.Interaction, user: discord.Member, station_id: str):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff darf Station-Mitglieder verwalten.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    stations = load_json(STATIONS_PATH, {})
+
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    s = stations[station_id]
+    members = s.get("members", [])
+
+    uid = str(user.id)
+    if uid in members:
+        await interaction.response.send_message("ℹ️ Dieser Spieler ist bereits Mitglied der Station.", ephemeral=True)
+        return
+
+    members.append(uid)
+    s["members"] = members
+    s["member_count"] = len(members)
+
+    stations[station_id] = s
+    save_json(STATIONS_PATH, stations)
+
+    await interaction.response.send_message(
+        f"✅ {user.mention} wurde zu **{s.get('name','?')}** hinzugefügt.\nMitglieder: {len(members)}",
+        ephemeral=True
+    )
+
+@bot.tree.command(name="station_remove_member", description="(Staff) Remove a member from a station.")
+@app_commands.describe(user="User to remove", station_id="Station ID")
+async def station_remove_member(interaction: discord.Interaction, user: discord.Member, station_id: str):
+    if not is_staff(interaction):
+        await interaction.response.send_message("❌ Nur Staff darf Station-Mitglieder verwalten.", ephemeral=True)
+        return
+
+    station_id = station_id.lower().strip()
+    stations = load_json(STATIONS_PATH, {})
+
+    if station_id not in stations:
+        await interaction.response.send_message("❌ Station nicht gefunden.", ephemeral=True)
+        return
+
+    s = stations[station_id]
+    members = s.get("members", [])
+
+    uid = str(user.id)
+    if uid not in members:
+        await interaction.response.send_message("ℹ️ Dieser Spieler ist kein Mitglied der Station.", ephemeral=True)
+        return
+
+    members.remove(uid)
+    s["members"] = members
+    s["member_count"] = len(members)
+
+    stations[station_id] = s
+    save_json(STATIONS_PATH, stations)
+
+    await interaction.response.send_message(
+        f"✅ {user.mention} wurde aus **{s.get('name','?')}** entfernt.\nMitglieder: {len(members)}",
+        ephemeral=True
+    )
 
 bot.run(TOKEN)
